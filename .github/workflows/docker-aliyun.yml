@@ -1,7 +1,5 @@
 name: Build and push to Aliyun Container Registry
 
-# 触发条件：推送形如 v1.2.3 的 tag 时触发
-# 推送规则：tag vX.Y.Z -> 镜像 tag 同时为 latest 和 vX.Y.Z
 on:
   push:
     tags:
@@ -9,23 +7,16 @@ on:
 
 jobs:
   build-and-push:
-    name: Build and push multi-arch image
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout
         uses: actions/checkout@v3
 
-      - name: Extract version from tag
+      - name: Extract version
         id: version
         run: |
-          # tag 形如 v1.2.3，去掉前缀 v 得到 1.2.3
           VERSION=${GITHUB_REF#refs/tags/v}
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
-          echo "Tag version: $VERSION"
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v2
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
@@ -37,21 +28,14 @@ jobs:
           username: ${{ secrets.ALIYUN_REGISTRY_USERNAME }}
           password: ${{ secrets.ALIYUN_REGISTRY_PASSWORD }}
 
-      - name: Build and push (multi-arch)
+      - name: Build and push
         uses: docker/build-push-action@v4
         with:
           context: .
           file: ./Dockerfile
           push: true
-          # 仅构建 linux/amd64（阿里云兼容：避免 buildx attestation manifest 触发 OCI empty manifest 拒绝）
-          # 说明：docker buildx 默认会推送 provenance / SBOM / 镜像签名等 attestation，
-          # 这些是 OCI attestation manifest 类型（application/vnd.oci.empty.v1+json 等）。
-          # 阿里云容器镜像服务不支持该格式，会返回 "denied: unknown manifest class"。
-          # 关闭 provenance: false 和 attest 即可让构建只推送真正的镜像 manifest。
           platforms: linux/amd64
           tags: |
             registry.cn-qingdao.aliyuncs.com/fubin/showdoc:latest
             registry.cn-qingdao.aliyuncs.com/fubin/showdoc:${{ steps.version.outputs.VERSION }}
           provenance: false
-          attest: []
-          # 关闭 GHA 缓存（cache-from / cache-to）：进一步避免触发 OCI 格式问题。
