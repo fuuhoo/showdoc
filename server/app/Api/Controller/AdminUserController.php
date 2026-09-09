@@ -60,12 +60,22 @@ class AdminUserController extends BaseController
             foreach ($users as $user) {
                 $userData = (array) $user;
                 $userData['reg_time'] = date("Y-m-d H:i:s", $userData['reg_time']);
-                
+
+                if (!empty($userData['ban_time'])) {
+                    $userData['ban_time'] = date("Y-m-d H:i:s", $userData['ban_time']);
+                } else {
+                    $userData['ban_time'] = '';
+                }
+
                 if ($userData['last_login_time']) {
                     $userData['last_login_time'] = date("Y-m-d H:i:s", $userData['last_login_time']);
                 } else {
                     $userData['last_login_time'] = '';
                 }
+
+                // 兼容：旧 DB 无 status 字段时输出 0
+                $userData['status'] = isset($userData['status']) ? (int) $userData['status'] : 0;
+                $userData['ban_reason'] = isset($userData['ban_reason']) ? (string) $userData['ban_reason'] : '';
 
                 $return['users'][] = $userData;
             }
@@ -97,7 +107,7 @@ class AdminUserController extends BaseController
 
         // 检查用户是否还有项目
         $hasItem = DB::table('item')
-            ->where('uid', $uid)
+            ->where('uid', (int) $uid)
             ->where('is_del', 0)
             ->first();
 
@@ -105,9 +115,92 @@ class AdminUserController extends BaseController
             return $this->error($response, 10101, "该用户名下还有项目，不允许删除。请先将其项目删除或者重新分配/转让");
         }
 
-        $result = User::deleteUser($uid);
+        $result = User::deleteUser((int) $uid);
         if (!$result) {
             return $this->error($response, 10101, '删除失败');
+        }
+
+        return $this->success($response, []);
+    }
+
+    /**
+     * 禁用用户
+     */
+    public function ban(Request $request, Response $response): Response
+    {
+        // 获取登录用户并检查管理员权限
+        $loginUser = [];
+        if ($error = $this->requireLoginUser($request, $response, $loginUser)) {
+            return $error;
+        }
+
+        $adminCheck = $this->checkAdmin($request, $response);
+        if ($adminCheck !== true) {
+            return $adminCheck;
+        }
+
+        $uid = $this->getParam($request, 'uid', 0);
+        $reason = (string) $this->getParam($request, 'remark', '');
+
+        if ((int) $uid <= 0) {
+            return $this->error($response, 10101, '参数错误');
+        }
+
+        $operatorUid = (int) ($loginUser['uid'] ?? 0);
+        $targetUid = (int) $uid;
+
+        // 不能禁用自己
+        if ($targetUid === $operatorUid) {
+            return $this->error($response, 10101, '不能禁用自己的账号');
+        }
+
+        // 不能禁用其他管理员（避免锁死系统）
+        $target = User::findById($targetUid);
+        if (!$target) {
+            return $this->error($response, 10101, '用户不存在');
+        }
+        if ((int) ($target->groupid ?? 0) === 1) {
+            return $this->error($response, 10101, '不能禁用其他管理员');
+        }
+
+        $result = User::banUser($targetUid, $reason);
+        if (!$result) {
+            return $this->error($response, 10101, '禁用失败');
+        }
+
+        return $this->success($response, []);
+    }
+
+    /**
+     * 解除禁用用户
+     */
+    public function unban(Request $request, Response $response): Response
+    {
+        // 获取登录用户并检查管理员权限
+        $loginUser = [];
+        if ($error = $this->requireLoginUser($request, $response, $loginUser)) {
+            return $error;
+        }
+
+        $adminCheck = $this->checkAdmin($request, $response);
+        if ($adminCheck !== true) {
+            return $adminCheck;
+        }
+
+        $uid = $this->getParam($request, 'uid', 0);
+        if ((int) $uid <= 0) {
+            return $this->error($response, 10101, '参数错误');
+        }
+
+        $targetUid = (int) $uid;
+        $target = User::findById($targetUid);
+        if (!$target) {
+            return $this->error($response, 10101, '用户不存在');
+        }
+
+        $result = User::unbanUser($targetUid);
+        if (!$result) {
+            return $this->error($response, 10101, '解禁失败');
         }
 
         return $this->success($response, []);

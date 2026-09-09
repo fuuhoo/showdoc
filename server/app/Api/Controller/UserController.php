@@ -46,6 +46,27 @@ class UserController extends BaseController
             return $this->error($response, 10204, '登录失败次数过多，账号已锁定5分钟');
         }
 
+        // 优先检查账号是否被禁用（密码正确也会被拦截）。
+        // 通过邮箱/手机号登录时，也要先查到 uid 才能判断。
+        $existingRow = DB::table('user')
+            ->where(function ($q) use ($username) {
+                $q->where('username', $username)
+                    ->orWhere(function ($q2) use ($username) {
+                        $q2->where('email', $username)
+                            ->where('email_verify', '=', 1);
+                    })
+                    ->orWhere('mobile', $username);
+            })
+            ->first();
+        if ($existingRow && (int) ($existingRow->status ?? 0) === 1) {
+            $reason = (string) ($existingRow->ban_reason ?? '');
+            $msg = '账号已被禁用，请联系管理员';
+            if ($reason !== '') {
+                $msg .= '（原因：' . $reason . '）';
+            }
+            return $this->error($response, 10211, $msg);
+        }
+
         $user = User::checkLogin($username, $password);
         $isLdap = false;
 

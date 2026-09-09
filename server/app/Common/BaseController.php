@@ -437,6 +437,20 @@ abstract class BaseController
             return null;
         }
 
+        // 检查账号是否已被管理员禁用：禁用后强制踢下线（token 已失效）
+        // 注意：DB 未迁移 status 字段时，isDisabled() 会返回 false，不会误伤
+        if (User::isDisabled($uid)) {
+            // 清掉 token，避免被禁用账号继续使用旧 token
+            DB::table('user_token')
+                ->where('uid', $uid)
+                ->update(['token' => '']);
+            if ($strictOnError) {
+                return $this->error($response, 10211, '账号已被禁用，请联系管理员');
+            }
+            $user = [];
+            return null;
+        }
+
         $arr = (array) $userObj;
         unset($arr['password'], $arr['salt']);
 

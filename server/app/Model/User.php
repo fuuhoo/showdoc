@@ -125,6 +125,12 @@ class User
             return null;
         }
 
+        // 检查账号是否已被管理员禁用（status=1）
+        // 注意：使用字段访问而非独立查询，避免额外一次 DB IO
+        if (isset($row->status) && (int) $row->status === 1) {
+            return null;
+        }
+
         $verify = Security::verifyPassword(
             $password,
             (string) ($row->password ?? ''),
@@ -146,6 +152,125 @@ class User
         }
 
         return (array) $row;
+    }
+
+    /**
+     * 判断用户是否已被禁用。
+     *
+     * 说明：依赖 user 表的 status 字段（0=正常，1=禁用）。
+     * 如果 status 字段不存在（DB 未迁移），会通过 DB 异常保护，
+     * 返回 false 表示「未禁用」，保证老环境代码不报错。
+     *
+     * @param int $uid 用户 ID
+     * @return bool true=已禁用，false=未禁用
+     */
+    public static function isDisabled(int $uid): bool
+    {
+        if ($uid <= 0) {
+            return false;
+        }
+
+        try {
+            $row = self::findById($uid);
+            if (!$row) {
+                return false;
+            }
+            return (int) ($row->status ?? 0) === 1;
+        } catch (\Throwable $e) {
+            return false;
+        }
+    }
+
+    /**
+     * 禁用用户（管理员操作）
+     *
+     * 行为：
+     * - 将 user.status 置为 1
+     * - 写入 ban_reason / ban_time 备注（若 DB 有对应字段）
+     * - 强制清空该用户所有 user_token，使其立即下线
+     *
+     * 注意：调用方需自行保证调用者是管理员，并已校验
+     *       「不能禁用自己」「不能禁用其他管理员」等业务规则。
+     *
+     * @param int    $uid    用户 ID
+     * @param string $reason 备注原因（可选）
+     * @return bool 是否成功
+     */
+    public static function banUser(int $uid, string $reason = ''): bool
+    {
+        if ($uid <= 0) {
+            return false;
+        }
+
+        $row = self::findById($uid);
+        if (!$row) {
+            return false;
+        }
+
+        try {
+            $update = [
+                'status'    => 1,
+                'ban_time'  => time(),
+                'ban_reason' => $reason,
+            ];
+
+            $affected = DB::table('user')
+                ->where('uid', $uid)
+                ->update($update);
+
+            // 强制下线：清空该用户所有 token
+            DB::table('user_token')
+                ->where('uid', $uid)
+                ->update(['token' => '']);
+
+            return $affected >= 0;
+        } catch (\Throwable $e) {
+            // 兼容 DB 未迁移：status 字段不存在时，记录错误但仍尝试清 token
+            error_log("banUser failed for uid={$uid}: " . $e->getMessage());
+            try {
+                DB::table('user_token')
+                    ->where('uid', $uid)
+                    ->update(['token' => '']);
+            } catch (\Throwable $e2) {
+                // ignore
+            }
+            return false;
+        }
+    }
+
+    /**
+     * 解除用户禁用
+     *
+     * @param int $uid 用户 ID
+     * @return bool 是否成功
+     */
+    public static function unbanUser(int $uid): bool
+    {
+        if ($uid <= 0) {
+            return false;
+        }
+
+        $row = self::findById($uid);
+        if (!$row) {
+            return false;
+        }
+
+        try {
+            $update = [
+                'status'     => 0,
+                'ban_time'   => 0,
+                'ban_reason' => '',
+            ];
+
+            $affected = DB::table('user')
+                ->where('uid', $uid)
+                ->update($update);
+
+            return $affected >= 0;
+        } catch (\Throwable $e) {
+            error_log("unbanUser failed for uid={$uid}: " . $e->getMessage());
+            return false;
+        }
     }
 
     public static function setLastTime(int $uid): void

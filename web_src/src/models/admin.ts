@@ -45,6 +45,13 @@ export const banUser = (params: { uid: number; remark: string }) => {
 }
 
 /**
+ * 解除禁用用户
+ */
+export const unbanUser = (params: { uid: number }) => {
+  return request('/api/adminUser/unban', params)
+}
+
+/**
  * 获取用户登录日志
  */
 export const getUserLoginLog = (params: { uid: number }) => {

@@ -1,0 +1,53 @@
+name: Build and push to Aliyun Container Registry
+
+# 触发条件：推送形如 v1.2.3 的 tag 时触发
+# 推送规则：tag vX.Y.Z -> 镜像 tag 同时为 latest 和 vX.Y.Z
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  build-and-push:
+    name: Build and push multi-arch image
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Extract version from tag
+        id: version
+        run: |
+          # tag 形如 v1.2.3，去掉前缀 v 得到 1.2.3
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "Tag version: $VERSION"
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Login to Aliyun Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: registry.cn-qingdao.aliyuncs.com
+          username: ${{ secrets.ALIYUN_REGISTRY_USERNAME }}
+          password: ${{ secrets.ALIYUN_REGISTRY_PASSWORD }}
+
+      - name: Build and push (multi-arch)
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          platforms: |
+            linux/amd64
+            linux/arm64
+          tags: |
+            registry.cn-qingdao.aliyuncs.com/fubin/showdoc:latest
+            registry.cn-qingdao.aliyuncs.com/fubin/showdoc:${{ steps.version.outputs.VERSION }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
