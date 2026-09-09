@@ -4,6 +4,8 @@ on:
   push:
     tags:
       - 'v*.*.*'
+      # 也支持形如 v3.9.4-sw / v3.9.4-rc1 等带后缀的 tag
+      - 'v*.*.*-*'
 
 jobs:
   build-and-push:
