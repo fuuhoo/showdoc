@@ -43,13 +43,15 @@ jobs:
           context: .
           file: ./Dockerfile
           push: true
-          # 仅构建 linux/amd64
-          # 说明：阿里云容器镜像仓库不支持 OCI 空 manifest 格式（application/vnd.oci.empty.v1+json）。
-          # 多架构构建（amd64 + arm64）时 docker buildx 会先推送 OCI empty manifest 作为占位清单，
-          # 触发 "denied: unknown manifest class" 错误。如需 arm64，请改用独立的镜像缓存仓库。
+          # 仅构建 linux/amd64（阿里云兼容：避免 buildx attestation manifest 触发 OCI empty manifest 拒绝）
+          # 说明：docker buildx 默认会推送 provenance / SBOM / 镜像签名等 attestation，
+          # 这些是 OCI attestation manifest 类型（application/vnd.oci.empty.v1+json 等）。
+          # 阿里云容器镜像服务不支持该格式，会返回 "denied: unknown manifest class"。
+          # 关闭 provenance: false 和 attest 即可让构建只推送真正的镜像 manifest。
           platforms: linux/amd64
           tags: |
             registry.cn-qingdao.aliyuncs.com/fubin/showdoc:latest
             registry.cn-qingdao.aliyuncs.com/fubin/showdoc:${{ steps.version.outputs.VERSION }}
-          # 关闭 GHA 缓存：避免 buildx 在多架构/单架构构建中生成 OCI empty manifest，
-          # 触发阿里云仓库的格式拒绝问题。如果后续启用缓存，请单独建一个缓存仓库。
+          provenance: false
+          attest: []
+          # 关闭 GHA 缓存（cache-from / cache-to）：进一步避免触发 OCI 格式问题。
