@@ -49,5 +49,7 @@ jobs:
           tags: |
             registry.cn-qingdao.aliyuncs.com/fubin/showdoc:latest
             registry.cn-qingdao.aliyuncs.com/fubin/showdoc:${{ steps.version.outputs.VERSION }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # 关闭 GHA 缓存：阿里云镜像仓库不支持 OCI 空 manifest 格式（buildx 缓存会触发该类型上传）
+          # 注释：cache-from / cache-to 会让 buildx 推送一个 application/vnd.oci.empty.v1+json 缓存占位清单，
+          # 阿里云返回 "denied: unknown manifest class for application/vnd.oci.empty.v1+json"。
+          # 如果后续需要缓存，可改用 --cache-to=type=registry,ref=... 推到一个独立缓存仓库。
