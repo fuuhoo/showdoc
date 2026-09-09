@@ -16,7 +16,7 @@ class Upgrade
      * 当前数据库版本号
      * 注意：如果更新数据库结构，务必更改此版本号
      */
-    private const CURRENT_VERSION = 34;
+    private const CURRENT_VERSION = 35;
 
     /**
      * 检查并执行数据库升级
@@ -764,6 +764,20 @@ class Upgrade
             // users表增加is_sso字段，标记通过SSO(OAuth2/LDAP/CAS/SecretKey)登录的用户
             if (!self::isColumnExist('user', 'is_sso')) {
                 DB::statement("ALTER TABLE user ADD is_sso TINYINT(1) NOT NULL DEFAULT '0'");
+            }
+
+            // user表增加 status / ban_time / ban_reason 字段（用户禁用/解禁功能）
+            // status: 0=正常, 1=禁用
+            // ban_time: 被禁用的时间戳
+            // ban_reason: 管理员填写的禁用原因
+            if (!self::isColumnExist('user', 'status')) {
+                DB::statement("ALTER TABLE user ADD status TINYINT(1) NOT NULL DEFAULT '0'");
+            }
+            if (!self::isColumnExist('user', 'ban_time')) {
+                DB::statement("ALTER TABLE user ADD ban_time INT(11) NOT NULL DEFAULT '0'");
+            }
+            if (!self::isColumnExist('user', 'ban_reason')) {
+                DB::statement("ALTER TABLE user ADD ban_reason VARCHAR(500) NOT NULL DEFAULT ''");
             }
 
             return true;
